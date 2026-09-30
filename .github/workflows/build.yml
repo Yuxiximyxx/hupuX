@@ -2,6 +2,7 @@ name: Build
 
 # 本 fork 只维护 Android（arm64-v8a）版本：桌面端 / iOS 产物已移除，
 # Release 里只会有一个 HupuX-v<版本>-arm64-v8a.apk。
+# fork 仓库：https://github.com/Yuxiximyxx/hupuX
 #
 # 只有「应用本体」改动才会跑：纯文档 / README / 仓库配图改动直接不触发，
 # 免得白白占 CI 额度、也不会平白升一个版本号。
