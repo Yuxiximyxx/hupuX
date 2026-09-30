@@ -11,6 +11,7 @@ name: Build
 # GitHub 会跳过整条流水线——下面 release job 回写版本号的那条提交就是故意带它来防递归的，
 # 但平时写提交信息时别误用，否则这次改动既不会构建也不会发版。
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
