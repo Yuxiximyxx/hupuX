@@ -17,6 +17,10 @@ android {
         targetSdk = 35
         versionCode = appVersionCode.toInt()
         versionName = appVersion
+        // 本 fork 只发 arm64-v8a 一个架构
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     signingConfigs {
