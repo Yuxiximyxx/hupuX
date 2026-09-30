@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 import java.awt.Desktop
 import java.net.URI
 
-private const val GITHUB_URL = "https://github.com/bidabrain/hupuX"
+private const val GITHUB_URL = "https://github.com/Yuxiximyxx/hupuX"
 
 @Composable
 fun SettingsScreen(cookieStorage: DesktopCookieStorage, updateChecker: UpdateChecker) {
@@ -219,7 +219,7 @@ fun SettingsScreen(cookieStorage: DesktopCookieStorage, updateChecker: UpdateChe
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("开源地址", fontSize = 14.sp, color = TextSecondary)
-                        Text("github.com/bidabrain/hupuX", fontSize = 12.sp, color = HupuRed)
+                        Text("github.com/Yuxiximyxx/hupuX", fontSize = 12.sp, color = HupuRed)
                     }
                     TextButton(onClick = {
                         runCatching { Desktop.getDesktop().browse(URI(GITHUB_URL)) }

@@ -36,7 +36,7 @@ import com.hupux.BuildConfig
 import com.hupux.R
 import com.hupux.ui.theme.*
 
-private const val GITHUB_URL = "https://github.com/bidabrain/hupuX"
+private const val GITHUB_URL = "https://github.com/Yuxiximyxx/hupuX"
 
 @Composable
 fun SettingsScreen(
@@ -365,7 +365,7 @@ fun SettingsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("开源地址", fontSize = 14.sp, color = TextSecondary)
                             Text(
-                                "github.com/bidabrain/hupuX",
+                                "github.com/Yuxiximyxx/hupuX",
                                 fontSize = 12.sp, color = HupuRed
                             )
                         }

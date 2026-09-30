@@ -22,7 +22,7 @@ struct SettingsView: View {
     @State private var checkingUpdate = false
     @State private var updateMessage: String?
     @State private var hasUpdate = false
-    @State private var releaseUrl = "https://github.com/bidabrain/hupuX/releases/latest"
+    @State private var releaseUrl = "https://github.com/Yuxiximyxx/hupuX/releases/latest"
 
     var body: some View {
         NavigationStack {
@@ -182,7 +182,7 @@ struct SettingsView: View {
                 HStack {
                     Text("开源地址").font(.system(size: 14)).foregroundStyle(Theme.textSecondary)
                     Spacer()
-                    Link("github.com/bidabrain/hupuX", destination: URL(string: "https://github.com/bidabrain/hupuX")!)
+                    Link("github.com/Yuxiximyxx/hupuX", destination: URL(string: "https://github.com/Yuxiximyxx/hupuX")!)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.red)
                 }

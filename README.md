@@ -179,7 +179,7 @@ hupuX/
 ## 构建与运行
 
 ```bash
-git clone https://github.com/bidabrain/hupuX.git
+git clone https://github.com/Yuxiximyxx/hupuX.git
 cd hupuX
 
 # Android：构建 Debug 包（APK 位于 app/build/outputs/apk/debug/）
@@ -204,12 +204,7 @@ cd hupuX
 
 > 首次编译会自动通过 Run Script 调 Gradle 生成 `Shared.framework`（`./gradlew :shared:embedAndSignAppleFrameworkForXcode`），无需手动操作。
 
-**方式二：侧载现成的未签名 `.ipa`**
-
-1. 从 [Releases](https://github.com/bidabrain/hupuX/releases) 下载 `HupuX-unsigned.ipa`
-2. 用 **Sideloadly** / **AltStore** 等工具，输入你的 Apple ID 签名并安装到 iPhone
-
-> 免费 Apple ID 签名的 App 有效期为 **7 天**，到期需重新签名；付费开发者账号为 1 年。
+> 本 fork 的 Release 仅发布 Android 版（arm64-v8a），iOS 请用方式一自行编译安装。
 
 **命令行编译（模拟器，无需签名）**
 
@@ -229,9 +224,9 @@ xcodebuild -project HupuX.xcodeproj -scheme HupuX \
 
 1. 纯文档改动（`**.md` / `doc/**` / 仓库配图）**不触发** CI；
 2. 触发后先算出新版本号（默认 patch +1，如本次推送自己改了 `appVersion` 则以手动值为准）；
-3. 用该版本号构建 Android / macOS(ARM+Intel) / Windows / Linux / iOS 六个产物；
-4. **全部成功后**才把版本号写回 `gradle.properties` 与 iOS 的 `project.pbxproj`，
-   并发布 GitHub Release `v<版本号>`。构建失败则仓库保持不变，不会留下没有 release 的版本号。
+3. 用该版本号构建 Android（arm64-v8a）产物；
+4. **成功后**才把版本号写回 `gradle.properties`，
+   并发布 GitHub Release `v<版本号>`（仅含 `HupuX-v<版本号>-arm64-v8a.apk`）。构建失败则仓库保持不变，不会留下没有 release 的版本号。
 
 想发 minor/major 版本时，手动把 `gradle.properties` 的 `appVersion` 改成目标版本再推即可
 （`appVersionCode` 忘了改也没关系，CI 会自动 +1，保证 Android 能覆盖安装）。
@@ -244,11 +239,11 @@ xcodebuild -project HupuX.xcodeproj -scheme HupuX \
 
 ## Star History
 
-<a href="https://www.star-history.com/?type=date&repos=bidabrain%2FhupuX">
+<a href="https://www.star-history.com/?type=date&repos=Yuxiximyxx%2FhupuX">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=bidabrain/hupuX&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=bidabrain/hupuX&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=bidabrain/hupuX&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Yuxiximyxx/hupuX&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Yuxiximyxx/hupuX&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Yuxiximyxx/hupuX&type=date&legend=top-left" />
  </picture>
 </a>
 
