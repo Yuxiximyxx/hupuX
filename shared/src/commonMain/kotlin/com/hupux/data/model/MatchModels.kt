@@ -89,6 +89,64 @@ data class MatchScoreBoard(
     val items: List<ScoredItem>
 )
 
+/** 电竞比赛里单个选手在单局中的评分 */
+data class EsportPlayerScore(
+    val bizType: String,
+    val bizNo: String,
+    val name: String,
+    val avatar: String,
+    val teamId: String,
+    val score: Double,
+    val scoreCount: Int,
+    val commentCount: Int,
+    /** 如「K/D/A:6/1/15」；没有则为空 */
+    val stats: String,
+    /** 虎扑给的标签，如「打出效果」 */
+    val label: String,
+    /** 热评首条；没有则为空 */
+    val hotComment: String
+)
+
+/** 电竞比赛单局（第1局/第2局…）的双方选手评分 */
+data class GameScoreBoard(
+    val gameName: String,
+    val bizType: String,
+    val bizNo: String,
+    /** 主队在前 */
+    val home: EsportTeamScore,
+    val away: EsportTeamScore
+)
+
+data class EsportTeamScore(
+    val teamId: String,
+    val name: String,
+    val logo: String,
+    val players: List<EsportPlayerScore>
+)
+
+/** 全场评分的一对选手（主队 vs 客队同序号配对） */
+data class PlayerScorePair(
+    val home: EsportPlayerScore,
+    val away: EsportPlayerScore
+)
+
+/** 电竞整场评分：单局聚合的全场榜 + 分局榜 */
+data class EsportMatchScore(
+    val title: String,
+    val homeName: String,
+    val homeLogo: String,
+    val homeScore: String,
+    val awayName: String,
+    val awayLogo: String,
+    val awayScore: String,
+    val homeTeamId: String,
+    val awayTeamId: String,
+    val raterText: String,
+    /** 全场评分：两队选手按分数降序配对 */
+    val pairs: List<PlayerScorePair>,
+    val games: List<GameScoreBoard>
+)
+
 /**
  * 虎扑首页顶部滚动条里的比分卡片。
  *

@@ -1,7 +1,11 @@
 package com.hupux.data.scraper
 
 import com.hupux.data.CookieStorage
-import com.hupux.data.model.HomeMatch
+import com.hupux.data.model.EsportMatchScore
+import com.hupux.data.model.EsportPlayerScore
+import com.hupux.data.model.EsportTeamScore
+import com.hupux.data.model.PlayerScorePair
+import com.hupux.data.model.GameScoreBoard
 import com.hupux.data.model.MatchDay
 import com.hupux.data.model.MatchItem
 import com.hupux.data.model.MatchSchedule
@@ -206,6 +210,188 @@ class HupuMatchScraper(
             items     = items
         )
     }
+
+    // ── 电竞比赛评分（单局结构：比赛节点 → 单局节点 → 选手节点）─────────────
+    //
+    // 电竞（lol/lpl/kog 等）的评分树是三层：`xxx_match` → `xxx_bo`（第1局/第2局）
+    // → `xxx_item`（选手）。全场评分按「选手×队伍」跨局加权平均算出。
+
+    /**
+     * 拉取电竞比赛的整场评分。非电竞结构（比赛节点下直接是选手）返回 null，
+     * 调用方回退到 [fetchScoreBoard]。
+     */
+    suspend fun fetchEsportMatchScore(itemBizType: String, itemBizNo: String): EsportMatchScore? {
+        // ① 找到比赛节点：条目 → 父；若父是单局节点（xxx_bo）再往上找比赛节点
+        var (matchType, matchNo) = resolveMatchNode(itemBizType, itemBizNo)
+        if (matchType.endsWith("_bo")) {
+            val up = parentOf(matchType, matchNo) ?: return null
+            matchType = up.first
+            matchNo = up.second
+        }
+        if (!matchType.endsWith("_match")) return null
+
+        // ② 比赛基本信息（队伍名/logo/比分）
+        val matchDetail = try {
+            val body = fetch(
+                "$SCORE_API/getSelfByBizKey?outBizType=$matchType&outBizNo=$matchNo",
+                "https://m.hupu.com/"
+            )
+            parseJsonObject(body).obj("data")?.obj("detail")
+        } catch (_: Exception) { null } ?: return null
+        val info = matchDetail.obj("infoJson")
+        val homeId   = info?.firstOf("homeTeamId") ?: ""
+        val awayId   = info?.firstOf("awayTeamId") ?: ""
+        val homeName = info?.firstOf("homeTeamName") ?: ""
+        val awayName = info?.firstOf("awayTeamName") ?: ""
+        val title    = matchDetail.str("name") ?: ""
+
+        // ③ 比赛的子节点：应为单局节点（xxx_bo）；若直接是选手则不是电竞结构
+        val childBody = fetch(
+            "$SCORE_API/getCurAndSubNodeByBizKey" +
+                "?outBizType=$matchType&outBizNo=$matchNo&relation=CHILD&page=1&pageSize=50",
+            "https://m.hupu.com/"
+        )
+        val childData = parseJsonObject(childBody).obj("data")
+        val boNodes = (childData?.obj("pageResult")?.arr("data") ?: EmptyJsonArray)
+            .map { it.obj.obj("node") ?: return@map null }
+            .filterNotNull()
+        if (boNodes.isEmpty() || boNodes.none { (it.str("bizType") ?: "").endsWith("_bo") }) return null
+
+        val raters = childData?.obj("self")?.obj("node")?.long_("summedScorePersonCount") ?: 0L
+
+        // ④ 逐局拉选手
+        val games = boNodes
+            .filter { (it.str("bizType") ?: "").endsWith("_bo") }
+            .mapNotNull { bo ->
+                val boType = bo.str("bizType") ?: return@mapNotNull null
+                val boNo   = bo.str("bizId") ?: return@mapNotNull null
+                val gameName = bo.str("name") ?: ""
+                val players = fetchBoPlayers(boType, boNo)
+                if (players.isEmpty()) return@mapNotNull null
+                val homePlayers = players.filter { it.teamId == homeId }.sortedByDescending { it.score }
+                val awayPlayers = players.filter { it.teamId == awayId }.sortedByDescending { it.score }
+                // teamId 对不上时按出现顺序兜底分成两队
+                val (h, a) = if (homePlayers.isNotEmpty() && awayPlayers.isNotEmpty()) {
+                    homePlayers to awayPlayers
+                } else {
+                    val half = players.size / 2
+                    players.take(half) to players.drop(half)
+                }
+                GameScoreBoard(
+                    gameName = gameName, bizType = boType, bizNo = boNo,
+                    home = EsportTeamScore(homeId, homeName,
+                        info?.firstOf("homeTeamLogo") ?: "", h),
+                    away = EsportTeamScore(awayId, awayName,
+                        info?.firstOf("awayTeamLogo") ?: "", a)
+                )
+            }
+            .sortedBy { extractGameIndex(it.gameName) }
+        if (games.isEmpty()) return null
+
+        // ⑤ 全场评分：按（队伍，选手名）跨局加权平均
+        val agg = linkedMapOf<String, MutableList<EsportPlayerScore>>()
+        games.forEach { g ->
+            (g.home.players + g.away.players).forEach { p ->
+                agg.getOrPut("${p.teamId}|${p.name}") { mutableListOf() }.add(p)
+            }
+        }
+        fun blend(list: List<EsportPlayerScore>): EsportPlayerScore {
+            val total = list.sumOf { it.scoreCount }.coerceAtLeast(1)
+            val best = list.maxByOrNull { it.scoreCount } ?: list.first()
+            return best.copy(
+                score        = list.sumOf { it.score * it.scoreCount } / total,
+                scoreCount   = list.sumOf { it.scoreCount },
+                commentCount = list.sumOf { it.commentCount }
+            )
+        }
+        val homeAgg = agg.values.filter { it.first().teamId == homeId }
+            .map { blend(it) }.sortedByDescending { it.score }
+        val awayAgg = agg.values.filter { it.first().teamId == awayId }
+            .map { blend(it) }.sortedByDescending { it.score }
+        val pairs = homeAgg.zip(awayAgg).map { (h, a) -> PlayerScorePair(h, a) }
+
+        return EsportMatchScore(
+            title       = title,
+            homeName    = homeName,
+            homeLogo    = info?.firstOf("homeTeamLogo") ?: "",
+            homeScore   = info?.firstOf("homeTeamScore") ?: "",
+            awayName    = awayName,
+            awayLogo    = info?.firstOf("awayTeamLogo") ?: "",
+            awayScore   = info?.firstOf("awayTeamScore") ?: "",
+            homeTeamId  = homeId,
+            awayTeamId  = awayId,
+            raterText   = if (raters > 0) "${formatCount(raters)}人参与评分" else "",
+            pairs       = pairs,
+            games       = games
+        )
+    }
+
+    /** 取单局节点直属的选手条目 */
+    private suspend fun fetchBoPlayers(boType: String, boNo: String): List<EsportPlayerScore> {
+        return try {
+            val body = fetch(
+                "$SCORE_API/getCurAndSubNodeByBizKey" +
+                    "?outBizType=$boType&outBizNo=$boNo&relation=CHILD&page=1&pageSize=60",
+                "https://m.hupu.com/"
+            )
+            val list = parseJsonObject(body).obj("data")
+                ?.obj("pageResult")?.arr("data") ?: EmptyJsonArray
+            list.mapNotNull { el ->
+                val node = el.obj.obj("node") ?: return@mapNotNull null
+                val info = node.obj("infoJson")
+                val name = node.str("name") ?: ""
+                val type = info?.firstOf("type")
+                // 只要选手：排除教练、替补、BP（ban/pick）条目
+                val isPlayer = type == "player" ||
+                    (type == null && !name.startsWith("教练") &&
+                        !name.startsWith("替补") && !name.contains("/"))
+                if (!isPlayer) return@mapNotNull null
+                val score = node.str("scoreAvg")?.toDoubleOrNull() ?: 0.0
+                val count = node.int_("scorePersonCount") ?: 0
+                if (score <= 0.0 && count == 0) return@mapNotNull null
+                val hot = node.arr("hottestComments")?.firstOrNull()?.asStr ?: ""
+                EsportPlayerScore(
+                    bizType      = node.str("bizType") ?: "",
+                    bizNo        = node.str("bizId") ?: "",
+                    name         = name,
+                    avatar       = node.arr("image")?.firstOrNull()?.asStr ?: "",
+                    teamId       = info?.firstOf("teamId") ?: "",
+                    score        = score,
+                    scoreCount   = count,
+                    commentCount = node.int_("commentCount") ?: 0,
+                    stats        = info?.firstOf("desc") ?: "",
+                    label        = info?.labelText() ?: "",
+                    hotComment   = hot
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** 取节点的父节点业务键 */
+    private suspend fun parentOf(bizType: String, bizNo: String): Pair<String, String>? {
+        return try {
+            val body = fetch(
+                "$SCORE_API/getSelfByBizKey?outBizType=$bizType&outBizNo=$bizNo",
+                "https://m.hupu.com/"
+            )
+            val parent = parseJsonObject(body).obj("data")?.arr("linkNodes")
+                ?.map { it.obj }
+                ?.firstOrNull { it.str("target") == "PARENT" }
+                ?.obj("outBizKey")
+            val t = parent?.str("outBizType")
+            val n = parent?.str("outBizNo")
+            if (t != null && n != null) t to n else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 「第2局」→ 2，用于单局排序 */
+    private fun extractGameIndex(gameName: String): Int =
+        gameName.filter { it.isDigit() }.toIntOrNull() ?: 0
+
 
     // ── 首页「今日比分」横条 ──────────────────────────────────────────────
 

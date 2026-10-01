@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hupux.data.model.MatchDay
 import com.hupux.data.model.MatchSchedule
+import com.hupux.data.model.EsportMatchScore
 import com.hupux.data.model.MatchScoreBoard
 import com.hupux.data.scraper.HupuMatchScraper
 import com.hupux.data.scraper.MatchTag
@@ -80,6 +81,8 @@ class ScoreViewModel constructor(
 
 data class ScoreDetailUiState(
     val board: MatchScoreBoard? = null,
+    /** 电竞比赛走单局结构时非空，此时界面用虎扑评分排版 */
+    val esport: EsportMatchScore? = null,
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -95,10 +98,17 @@ class ScoreDetailViewModel constructor(
 
     fun load(bizType: String, bizNo: String) {
         val key = "$bizType:$bizNo"
-        if (loadedKey == key && _state.value.board != null) return
+        val cur = _state.value
+        if (loadedKey == key && (cur.board != null || cur.esport != null)) return
         loadedKey = key
         _state.value = ScoreDetailUiState(isLoading = true)
         viewModelScope.launch {
+            // 电竞比赛（lol/lpl/kog…）优先走单局结构
+            val esport = runCatching { scraper.fetchEsportMatchScore(bizType, bizNo) }.getOrNull()
+            if (esport != null) {
+                _state.value = ScoreDetailUiState(esport = esport, isLoading = false)
+                return@launch
+            }
             runCatching { scraper.fetchScoreBoard(bizType, bizNo) }
                 .onSuccess { _state.value = ScoreDetailUiState(board = it, isLoading = false) }
                 .onFailure {
