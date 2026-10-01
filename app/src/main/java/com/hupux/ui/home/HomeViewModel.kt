@@ -2,28 +2,15 @@ package com.hupux.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.hupux.data.model.HomeMatch
 import com.hupux.data.model.HotItem
 import com.hupux.data.model.Post
 import com.hupux.data.repository.FollowedZonesRepository
 import com.hupux.data.repository.HomeRepository
 import com.hupux.data.repository.ZoneRepository
-import com.hupux.data.local.MatchTagPrefs
-import com.hupux.data.scraper.HupuMatchScraper
-import com.hupux.data.scraper.matchesLeague
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-
-/**
- * 「今日比分」的刷新间隔。
- *
- * 这条数据是从 www.hupu.com 首页 HTML 里抠出来的（约 580KB，没有独立接口），
- * 抓一次不便宜，所以回到前台时按这个间隔节流，而不是每次都真的去抓。
- */
-private const val MATCH_REFRESH_INTERVAL_MS = 2 * 60 * 1000L
 
 data class HomeUiState(
     val recommendPosts:      List<Post>       = emptyList(),
@@ -47,9 +34,7 @@ data class HomeUiState(
 class HomeViewModel constructor(
     private val homeRepo:     HomeRepository,
     private val zoneRepo:     ZoneRepository,
-    private val followedRepo: FollowedZonesRepository,
-    private val matchScraper: HupuMatchScraper,
-    tagPrefs: MatchTagPrefs
+    private val followedRepo: FollowedZonesRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -60,49 +45,8 @@ class HomeViewModel constructor(
         .map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    /** 首页顶部「今日比分」横条。独立于 HomeUiState，避免 loadRecommend 整体重置时被清空。 */
-    private val _homeMatches = MutableStateFlow<List<HomeMatch>>(emptyList())
-    val homeMatches = _homeMatches.asStateFlow()
-
-    /**
-     * 按用户在设置里选的赛事过滤后的比分横条。
-     * 归一不到任何分区的未知赛事保留显示，不静默隐藏。
-     */
-    val visibleHomeMatches: StateFlow<List<HomeMatch>> =
-        combine(_homeMatches, tagPrefs.selectedTags) { matches, tags ->
-            matches.filter { m ->
-                val known = com.hupux.data.scraper.MatchTag.entries
-                    .any { it.matchesLeague(m.leagueType) }
-                !known || tags.any { it.matchesLeague(m.leagueType) }
-            }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    /** 上次成功抓到比分的时刻，用来做节流 */
-    private var lastMatchFetch = 0L
-    private var matchJob: Job? = null
-
     init {
         loadRecommend()
-        refreshHomeMatches()
-    }
-
-    /**
-     * 刷新「今日比分」横条。首页每次回到前台、以及重新进入首页时都会调用，
-     * 由 [MATCH_REFRESH_INTERVAL_MS] 节流；已有请求在飞时直接跳过。
-     *
-     * 比分条属于锦上添花，抓取失败就静默留空，不影响首页其余内容；
-     * 失败时也不记时间，这样下次回到前台还能立刻重试。
-     */
-    fun refreshHomeMatches() {
-        if (matchJob?.isActive == true) return
-        if (System.currentTimeMillis() - lastMatchFetch < MATCH_REFRESH_INTERVAL_MS) return
-        matchJob = viewModelScope.launch {
-            runCatching { matchScraper.fetchHomeMatches() }
-                .onSuccess {
-                    _homeMatches.value = it
-                    lastMatchFetch = System.currentTimeMillis()
-                }
-        }
     }
 
     fun loadRecommend() {

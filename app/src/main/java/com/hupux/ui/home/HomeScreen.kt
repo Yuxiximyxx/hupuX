@@ -34,15 +34,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import org.koin.androidx.compose.koinViewModel
 import coil3.compose.AsyncImage
 import androidx.compose.material.icons.outlined.Settings
-import com.hupux.data.model.HomeMatch
 import com.hupux.data.model.HotItem
 import com.hupux.data.model.Post
 import com.hupux.ui.theme.*
@@ -59,20 +55,6 @@ fun HomeScreen(
     vm: HomeViewModel = koinViewModel()
 ) {
     val state         by vm.state.collectAsState()
-    val homeMatches   by vm.visibleHomeMatches.collectAsState()
-
-    // 比分是会变的，但 HomeViewModel 只在冷启动时建一次，光靠 init 抓一次
-    // 会让挂后台一整天回来还显示昨天的比分。这里在每次回到前台时补一刀，
-    // 真正要不要发请求由 VM 按时间节流决定。
-    // addObserver 会把观察者同步到当前状态，所以首次进入首页也会走到 ON_RESUME。
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.refreshHomeMatches()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     val recommendListState = rememberLazyListState()
     val hotListState       = rememberLazyListState()
@@ -133,12 +115,6 @@ fun HomeScreen(
                     } else if (state.isLoading) {
                         Box(Modifier.fillMaxWidth().height(220.dp)
                             .background(BgGray))
-                    }
-
-                    // 今日比分横条（在 hero 与 Tab 之间，随 header 一起上滑隐藏）
-                    if (homeMatches.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        TodayScoreStrip(homeMatches)
                     }
 
                     // Plastic tabs
@@ -485,69 +461,3 @@ fun PillButton(label: String, onClick: () -> Unit) {
     }
 }
 
-// ─── 今日比分横条 ─────────────────────────────────────────────────────────────
-// 数据来自虎扑首页内联的 cardDataList，联赛覆盖比赛程接口全（含西甲/德甲/意甲等），
-// 但没有 matchId，所以只展示、不可点。
-
-@Composable
-private fun TodayScoreStrip(matches: List<HomeMatch>) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(matches.size) { i -> ScoreChip(matches[i]) }
-    }
-}
-
-@Composable
-private fun ScoreChip(match: HomeMatch) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = CardBg,
-        shadowElevation = 1.dp,
-        modifier = Modifier.width(150.dp)
-    ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    match.leagueType, fontSize = 10.sp, color = TextTertiary,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    if (match.hasScore) match.status else match.desc.substringAfter("号 ", match.desc),
-                    fontSize = 10.sp,
-                    color = if (match.hasScore) TextTertiary else HupuRed
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            TeamLine(match.homeLogo, match.homeName, match.homeScore)
-            Spacer(Modifier.height(4.dp))
-            TeamLine(match.awayLogo, match.awayName, match.awayScore)
-        }
-    }
-}
-
-@Composable
-private fun TeamLine(logo: String, name: String, score: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(
-            model = logo, contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(16.dp).clip(CircleShape)
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            name, fontSize = 12.sp, color = TextPrimary,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(4.dp))
-        Text(
-            score.ifEmpty { "-" },
-            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary
-        )
-    }
-}
