@@ -254,27 +254,21 @@ private fun PostContent(
             }
         }
         val displayedComments = s.displayedComments
-        // 楼中楼作用域：递归渲染嵌套回复时共用
-        val nestScope = remember(
-            s.likedPids, s.expandedPids, s.subRepliesMap,
-            s.isLoadingSubReplies, s.post.fid
-        ) {
-            // 正在加载的 pid：展开集合中还没有缓存数据的那个
-            val loadingPid = s.expandedPids.firstOrNull { pid ->
-                (s.subRepliesMap[pid] ?: emptyList()).isEmpty()
-            }.takeIf { s.isLoadingSubReplies }
-            CommentNestScope(
-                likedPids          = s.likedPids,
-                expandedPids       = s.expandedPids,
-                subRepliesMap      = s.subRepliesMap,
-                loadingPid         = loadingPid,
-                canLike            = s.post.fid.isNotEmpty(),
-                onToggleLike       = vm::toggleLike,
-                onToggleReplies    = vm::toggleReplies,
-                onReplyToComment   = vm::startReply,
-                onOpenUser          = onOpenUser
-            )
-        }
+        // 楼中楼作用域：递归渲染嵌套回复时共用（轻量数据类，直接创建）
+        val loadingPid = s.expandedPids.firstOrNull { pid ->
+            (s.subRepliesMap[pid] ?: emptyList()).isEmpty()
+        }.takeIf { s.isLoadingSubReplies }
+        val nestScope = CommentNestScope(
+            likedPids        = s.likedPids,
+            expandedPids     = s.expandedPids,
+            subRepliesMap    = s.subRepliesMap,
+            loadingPid       = loadingPid,
+            canLike          = s.post.fid.isNotEmpty(),
+            onToggleLike     = vm::toggleLike,
+            onToggleReplies  = vm::toggleReplies,
+            onReplyToComment = vm::startReply,
+            onOpenUser       = onOpenUser
+        )
         itemsIndexed(displayedComments, key = { _, c -> c.pid }) { index, comment ->
             // 正序模式：靠近底部时自动加载下一页
             if (s.sortMode == CommentSort.DEFAULT && index == displayedComments.size - 3 && s.post.hasMoreComments)
