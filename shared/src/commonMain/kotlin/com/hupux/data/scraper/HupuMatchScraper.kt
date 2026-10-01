@@ -6,6 +6,7 @@ import com.hupux.data.model.EsportPlayerScore
 import com.hupux.data.model.EsportTeamScore
 import com.hupux.data.model.PlayerScorePair
 import com.hupux.data.model.GameScoreBoard
+import com.hupux.data.model.HomeMatch
 import com.hupux.data.model.MatchDay
 import com.hupux.data.model.MatchItem
 import com.hupux.data.model.MatchSchedule
