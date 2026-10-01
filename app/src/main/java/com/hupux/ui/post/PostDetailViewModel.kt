@@ -21,7 +21,7 @@ sealed class PostDetailUiState {
     data class Success(
         val post: PostDetail,
         val subRepliesMap: Map<String, List<Comment>> = emptyMap(),
-        val replyStack: List<String> = emptyList(),
+        val expandedPids: Set<String> = emptySet(),   // 楼中楼：已内联展开的评论 pid 集合
         val isLoadingSubReplies: Boolean = false,
         val commentPage: Int = 1,
         val isLoadingMoreComments: Boolean = false,
@@ -44,7 +44,6 @@ sealed class PostDetailUiState {
         val isLoadingSort: Boolean = false,
         val fullComments: List<Comment> = emptyList()   // 登录后全量拉取的完整评论（时间正序），用于本地重排
     ) : PostDetailUiState() {
-        val expandedPid: String? get() = replyStack.lastOrNull()
         val displayedComments: List<Comment> get() =
             (if (sortMode == CommentSort.DEFAULT) post.comments
              else sortedComments.take(sortedDisplayCount))
@@ -85,14 +84,28 @@ class PostDetailViewModel constructor(
         }
     }
 
-    /** 压栈：展开某条评论的子回复，不论当前在第几层都适用 */
-    fun showReplies(parentPid: String) {
+    /** 楼中楼：内联展开/收起某条评论的子回复。展开时若无缓存则加载。 */
+    fun toggleReplies(parentPid: String) {
         val s = _state.value as? PostDetailUiState.Success ?: return
+        if (parentPid in s.expandedPids) {
+            // 收起
+            _state.value = s.copy(expandedPids = s.expandedPids - parentPid)
+            return
+        }
+        // 展开
         _state.value = s.copy(
-            replyStack          = s.replyStack + parentPid,
-            isLoadingSubReplies = true
+            expandedPids         = s.expandedPids + parentPid,
+            isLoadingSubReplies  = true
         )
         viewModelScope.launch {
+            // 有缓存就直接用，不再请求
+            val cached = (_state.value as? PostDetailUiState.Success)
+                ?.subRepliesMap?.get(parentPid)
+            if (!cached.isNullOrEmpty()) {
+                val s2 = _state.value as? PostDetailUiState.Success ?: return@launch
+                _state.value = s2.copy(isLoadingSubReplies = false)
+                return@launch
+            }
             runCatching { postRepo.getSubReplies(currentTid, parentPid) }
                 .onSuccess { subReplies ->
                     val s2 = _state.value as? PostDetailUiState.Success ?: return@onSuccess
@@ -202,21 +215,6 @@ class PostDetailViewModel constructor(
         _state.value = s.copy(
             sortedDisplayCount = minOf(s.sortedDisplayCount + REVERSE_PAGE_SIZE, s.sortedComments.size)
         )
-    }
-
-    /** 返回上一层 */
-    fun popReplies() {
-        val s = _state.value as? PostDetailUiState.Success ?: return
-        _state.value = s.copy(
-            replyStack          = s.replyStack.dropLast(1),
-            isLoadingSubReplies = false
-        )
-    }
-
-    /** 关闭整个回复面板 */
-    fun dismissReplies() {
-        val s = _state.value as? PostDetailUiState.Success ?: return
-        _state.value = s.copy(replyStack = emptyList())
     }
 
     fun startReply(comment: Comment) {

@@ -176,34 +176,6 @@ fun PostDetailScreen(
         }
     }
 
-    // ── 子回复 ModalBottomSheet ───────────────────────────────────
-    val success = state as? PostDetailUiState.Success
-    if (success?.expandedPid != null) {
-        val pid        = success.expandedPid
-        val subReplies = success.subRepliesMap[pid] ?: emptyList()
-        // 在帖子顶层评论和已加载的所有子回复里查找父评论
-        val parent     = success.post.comments.find { it.pid == pid }
-            ?: success.subRepliesMap.values.flatten().find { it.pid == pid }
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = vm::dismissReplies,
-            sheetState       = sheetState
-        ) {
-            SubRepliesSheet(
-                subReplies       = subReplies,
-                totalCount       = parent?.replyCount ?: subReplies.size,
-                isLoading        = success.isLoadingSubReplies,
-                canGoBack        = success.replyStack.size > 1,
-                likedPids        = success.likedPids,
-                onLike           = if (success.post.fid.isNotEmpty()) vm::toggleLike else null,
-                onBack           = vm::popReplies,
-                onReplyClick     = vm::showReplies,
-                onReplyToComment = vm::startReply,
-                onOpenUser       = onOpenUser
-            )
-        }
-    }
-
     // ── 原生回复 BottomSheet ──────────────────────────────────────
     val successState = state as? PostDetailUiState.Success
     if (successState?.showReplySheet == true) {
@@ -282,21 +254,49 @@ private fun PostContent(
             }
         }
         val displayedComments = s.displayedComments
+        // 楼中楼作用域：递归渲染嵌套回复时共用
+        val nestScope = remember(
+            s.likedPids, s.expandedPids, s.subRepliesMap,
+            s.isLoadingSubReplies, s.post.fid
+        ) {
+            // 正在加载的 pid：展开集合中还没有缓存数据的那个
+            val loadingPid = s.expandedPids.firstOrNull { pid ->
+                (s.subRepliesMap[pid] ?: emptyList()).isEmpty()
+            }.takeIf { s.isLoadingSubReplies }
+            CommentNestScope(
+                likedPids          = s.likedPids,
+                expandedPids       = s.expandedPids,
+                subRepliesMap      = s.subRepliesMap,
+                loadingPid         = loadingPid,
+                canLike            = s.post.fid.isNotEmpty(),
+                onToggleLike       = vm::toggleLike,
+                onToggleReplies    = vm::toggleReplies,
+                onReplyToComment   = vm::startReply,
+                onOpenUser          = onOpenUser
+            )
+        }
         itemsIndexed(displayedComments, key = { _, c -> c.pid }) { index, comment ->
             // 正序模式：靠近底部时自动加载下一页
             if (s.sortMode == CommentSort.DEFAULT && index == displayedComments.size - 3 && s.post.hasMoreComments)
                 LaunchedEffect(s.post.comments.size) { vm.loadMoreComments() }
+            val expanded = comment.pid in s.expandedPids
             CommentCard(
                 comment          = comment,
                 isLiked          = comment.pid in s.likedPids,
                 onLike           = if (s.post.fid.isNotEmpty()) {{ vm.toggleLike(comment) }} else null,
-                onReplyClick     = { vm.showReplies(comment.pid) },
+                onToggleReplies  = { vm.toggleReplies(comment.pid) },
                 onReplyToComment = if (comment.desktopPage > 0) {
                     { vm.startReply(comment) }
                 } else null,
                 onUserClick      = if (comment.authorPuid.isNotEmpty() && comment.desktopPage > 0) {
                     { onOpenUser(comment.authorPuid) }
-                } else null   // 仅登录后的桌面版数据可点：主页列表接口需登录
+                } else null,   // 仅登录后的桌面版数据可点：主页列表接口需登录
+                // ── 楼中楼 ──
+                isExpanded       = expanded,
+                isLoadingReplies = expanded && s.isLoadingSubReplies &&
+                                   (s.subRepliesMap[comment.pid] ?: emptyList()).isEmpty(),
+                nestedReplies    = s.subRepliesMap[comment.pid] ?: emptyList(),
+                nestScope        = nestScope
             )
         }
         // 非默认排序：数据已全部在内存，「加载更多」只是本地增量显示，无需网络
@@ -426,15 +426,36 @@ private fun PostBodyCard(
 
 // ─── Comment card ─────────────────────────────────────────────────────────────
 
+/**
+ * 楼中楼回调集合：用于递归渲染嵌套回复时传递所需的状态与回调。
+ */
+data class CommentNestScope(
+    val likedPids: Set<String>,
+    val expandedPids: Set<String>,
+    val subRepliesMap: Map<String, List<Comment>>,
+    val loadingPid: String?,
+    val canLike: Boolean,
+    val onToggleLike: (Comment) -> Unit,
+    val onToggleReplies: (String) -> Unit,
+    val onReplyToComment: (Comment) -> Unit,
+    val onOpenUser: (String) -> Unit
+)
+
 @Composable
 fun CommentCard(
     comment: Comment,
     isLiked: Boolean = false,
     showQuote: Boolean = true,
     onLike: (() -> Unit)? = null,
-    onReplyClick: (() -> Unit)? = null,
+    onToggleReplies: (() -> Unit)? = null,
     onReplyToComment: (() -> Unit)? = null,
-    onUserClick: (() -> Unit)? = null
+    onUserClick: (() -> Unit)? = null,
+    // ── 楼中楼 ──
+    isExpanded: Boolean = false,
+    isLoadingReplies: Boolean = false,
+    nestedReplies: List<Comment> = emptyList(),
+    nestScope: CommentNestScope? = null,
+    nestDepth: Int = 0
 ) {
     Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
         shape = RoundedCornerShape(12.dp), color = CardBg, shadowElevation = 2.dp) {
@@ -523,11 +544,11 @@ fun CommentCard(
                                         ambientColor = Color.Black.copy(.12f),
                                         spotColor    = Color.Black.copy(.12f))
                                     .background(pillBg, RoundedCornerShape(14.dp))
-                                    .clickable { onReplyClick?.invoke() }
+                                    .clickable { onToggleReplies?.invoke() }
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    "${comment.replyCount} 条回复",
+                                    if (isExpanded) "收起" else "${comment.replyCount} 条回复",
                                     fontSize   = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color      = TextSecondary
@@ -537,80 +558,153 @@ fun CommentCard(
                     }
                 }
             }
+            // ── 楼中楼：内联展开的子回复 ──
+            if (isExpanded && nestScope != null) {
+                Spacer(Modifier.height(8.dp))
+                NestedRepliesBlock(
+                    replies   = nestedReplies,
+                    isLoading = isLoadingReplies,
+                    scope     = nestScope,
+                    depth     = nestDepth + 1
+                )
+            }
         }
     }
 }
 
-// ─── Sub-replies bottom sheet ─────────────────────────────────────────────────
+
+// ─── 楼中楼：嵌套回复块 ───────────────────────────────────────────────────────
+// 紧凑样式：头像更小、无卡片阴影、左侧缩进，支持递归展开更深层的回复。
 
 @Composable
-private fun SubRepliesSheet(
-    subReplies: List<Comment>,
-    totalCount: Int,
+private fun NestedRepliesBlock(
+    replies: List<Comment>,
     isLoading: Boolean,
-    canGoBack: Boolean,
-    likedPids: Set<String> = emptySet(),
-    onLike: ((Comment) -> Unit)? = null,
-    onBack: () -> Unit,
-    onReplyClick: (String) -> Unit,
-    onReplyToComment: ((Comment) -> Unit)? = null,
-    onOpenUser: (String) -> Unit = {}
+    scope: CommentNestScope,
+    depth: Int
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (canGoBack) {
-                IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回上层",
-                        tint = TextSecondary)
+    Surface(
+        color    = BgGray.copy(alpha = 0.45f),
+        shape    = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            if (isLoading) {
+                Box(Modifier.fillMaxWidth().padding(14.dp), Alignment.Center) {
+                    CircularProgressIndicator(color = HupuRed, modifier = Modifier.size(22.dp))
                 }
-                Spacer(Modifier.width(4.dp))
+            } else if (replies.isEmpty()) {
+                Text("暂无回复", fontSize = 12.sp, color = TextTertiary,
+                    modifier = Modifier.padding(8.dp))
+            } else {
+                replies.forEach { reply ->
+                    NestedReplyItem(comment = reply, scope = scope, depth = depth)
+                }
             }
-            Text("回复", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Spacer(Modifier.width(6.dp))
-            Text("$totalCount 条", fontSize = 13.sp, color = TextTertiary)
         }
-        HorizontalDivider(color = DividerColor)
+    }
+}
 
-        if (isLoading) {
-            Box(Modifier.fillMaxWidth().height(120.dp), Alignment.Center) {
-                CircularProgressIndicator(color = HupuRed, modifier = Modifier.size(28.dp))
-            }
-        } else if (subReplies.isEmpty()) {
-            Box(Modifier.fillMaxWidth().height(100.dp), Alignment.Center) {
-                Text("暂未找到回复内容", color = TextTertiary, fontSize = 13.sp)
-            }
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(vertical = 8.dp),
-                modifier       = Modifier.fillMaxWidth().heightIn(max = 480.dp)
-            ) {
-                items(subReplies) { reply ->
-                    CommentCard(
-                        comment          = reply,
-                        isLiked          = reply.pid in likedPids,
-                        showQuote        = false,
-                        onLike           = onLike?.let { { it(reply) } },
-                        onReplyClick     = if (reply.replyCount > 0) ({ onReplyClick(reply.pid) }) else null,
-                        onReplyToComment = if (reply.desktopPage > 0) onReplyToComment?.let { { it(reply) } } else null,
-                        onUserClick      = if (reply.authorPuid.isNotEmpty() && reply.desktopPage > 0) ({ onOpenUser(reply.authorPuid) }) else null
+@Composable
+private fun NestedReplyItem(
+    comment: Comment,
+    scope: CommentNestScope,
+    depth: Int
+) {
+    val isLiked   = comment.pid in scope.likedPids
+    val expanded  = comment.pid in scope.expandedPids
+    val subList   = scope.subRepliesMap[comment.pid] ?: emptyList()
+    val loading   = scope.loadingPid == comment.pid
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            AsyncImage(model = comment.avatar, contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(26.dp).clip(CircleShape).background(BgGray)
+                    .then(
+                        if (comment.authorPuid.isNotEmpty())
+                            Modifier.clickable { scope.onOpenUser(comment.authorPuid) }
+                        else Modifier
+                    ))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        comment.username, fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold, color = TextPrimary,
+                        modifier = if (comment.authorPuid.isNotEmpty())
+                            Modifier.clickable { scope.onOpenUser(comment.authorPuid) }
+                        else Modifier,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
-                }
-                if (subReplies.size < totalCount) {
-                    item {
-                        Box(Modifier.fillMaxWidth().padding(8.dp), Alignment.Center) {
-                            Text(
-                                "还有 ${totalCount - subReplies.size} 条回复，请在帖子中查看",
-                                fontSize = 11.sp, color = TextTertiary
-                            )
+                    if (comment.isAuthor) {
+                        Spacer(Modifier.width(4.dp))
+                        Surface(color = HupuRed, shape = RoundedCornerShape(3.dp)) {
+                            Text("楼主", fontSize = 9.sp, color = Color.White,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
                         }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    val likeCount = comment.lights + if (isLiked) 1 else 0
+                    if (scope.canLike) {
+                        Text("👍 $likeCount", fontSize = 11.sp,
+                            color = if (isLiked) HupuRed else TextTertiary,
+                            modifier = Modifier.clickable { scope.onToggleLike(comment) }
+                                .padding(4.dp))
+                    } else {
+                        Text("👍 $likeCount", fontSize = 11.sp, color = TextTertiary,
+                            modifier = Modifier.padding(4.dp))
+                    }
+                }
+                // 回复对象：@用户名
+                comment.quoteUsername?.let { qn ->
+                    Text("@$qn", fontSize = 11.sp, color = HupuRed,
+                        fontWeight = FontWeight.Medium)
+                }
+                HtmlText(html = comment.content, imageScale = 0.125f)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(comment.time, fontSize = 10.sp, color = TextTertiary)
+                    if (comment.location.isNotEmpty())
+                        Text("  ·  ${comment.location}", fontSize = 10.sp, color = TextTertiary)
+                    Spacer(Modifier.weight(1f))
+                    Text("回复", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        color = TextSecondary,
+                        modifier = Modifier.clickable { scope.onReplyToComment(comment) }
+                            .padding(horizontal = 6.dp, vertical = 2.dp))
+                    if (comment.replyCount > 0) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            if (expanded) "收起" else "${comment.replyCount} 条回复",
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            color = HupuRed,
+                            modifier = Modifier.clickable { scope.onToggleReplies(comment.pid) }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
+        // 递归：更深层的楼中楼
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            Box(Modifier.padding(start = 12.dp)) {
+                NestedRepliesBlock(
+                    replies   = subList,
+                    isLoading = loading,
+                    scope     = scope,
+                    depth     = depth + 1
+                )
+            }
+        }
+        HorizontalDivider(
+            color = DividerColor.copy(alpha = 0.5f),
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 
