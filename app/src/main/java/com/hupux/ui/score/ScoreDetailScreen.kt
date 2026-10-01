@@ -184,7 +184,7 @@ private fun EsportScoreContent(
                 )
             }
             val team = if (selectedTeam == 0) game.home else game.away
-            items(team.players, key = { it.bizNo.ifEmpty { _ -> it.name } }) { p ->
+            items(team.players, key = { p -> p.bizNo.ifEmpty { p.name } }) { p ->
                 PlayerScoreCard(p) {
                     if (p.bizNo.isNotEmpty()) onItemClick(p.bizType, p.bizNo)
                 }
