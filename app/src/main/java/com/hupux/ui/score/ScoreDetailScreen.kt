@@ -216,6 +216,7 @@ private fun MatchHeaderCard(detail: EsportMatchScore) {
                     model = detail.homeLogo, contentDescription = detail.homeName,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
+                )
                 Spacer(Modifier.height(6.dp))
                 Text(detail.homeName, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                     color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -234,7 +235,8 @@ private fun MatchHeaderCard(detail: EsportMatchScore) {
                 AsyncImage(
                     model = detail.awayLogo, contentDescription = detail.awayName,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)))
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
+                )
                 Spacer(Modifier.height(6.dp))
                 Text(detail.awayName, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                     color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
