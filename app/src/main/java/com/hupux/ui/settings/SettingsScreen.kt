@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -116,6 +117,55 @@ fun SettingsScreen(
                     Text("当前状态", fontSize = 14.sp, color = TextSecondary)
                     Spacer(Modifier.weight(1f))
                     Text(vm.statusText, fontSize = 14.sp, color = HupuRed, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // ── 赛事 ────────────────────────────────────────────────
+            // 首页「今日比分」横条和评分页 tab 只显示勾选的赛事
+            Surface(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp), color = CardBg, shadowElevation = 4.dp
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("赛事", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = {
+                            vm.tagPrefs.setSelected(com.hupux.data.scraper.MatchTag.entries.toSet())
+                        }) { Text("全选", fontSize = 13.sp, color = HupuRed) }
+                    }
+                    val selectedTags by vm.tagPrefs.selectedTags.collectAsState()
+                    Text("首页比分横条与评分分区只显示勾选的赛事",
+                        fontSize = 12.sp, color = TextTertiary)
+                    Spacer(Modifier.height(10.dp))
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        com.hupux.data.scraper.MatchTag.entries.forEach { tag ->
+                            val sel = tag in selectedTags
+                            FilterChip(
+                                selected = sel,
+                                onClick = { vm.tagPrefs.toggle(tag) },
+                                label = { Text(tag.label, fontSize = 13.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = HupuRed.copy(alpha = 0.15f),
+                                    selectedLabelColor = HupuRed,
+                                    selectedLeadingIconColor = HupuRed
+                                ),
+                                leadingIcon = if (sel) {{
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }} else null
+                            )
+                        }
+                    }
                 }
             }
 

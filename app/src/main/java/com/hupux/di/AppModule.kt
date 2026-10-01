@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import com.hupux.data.CookieStorage
 import com.hupux.data.local.CookiePreferences
+import com.hupux.data.local.MatchTagPrefs
 import com.hupux.data.local.ResilientSqliteCallback
 import com.hupux.data.repository.FollowedZonesRepository
 import com.hupux.shared.db.HupuDatabase
@@ -75,6 +76,7 @@ val appModule = module {
 
     // ── Cookie ────────────────────────────────────────────────────────────────
     single<CookiePreferences> { CookiePreferences(androidContext()) }
+    single { MatchTagPrefs(androidContext()) }
     single<CookieStorage>     { get<CookiePreferences>() }
 
     // ── Scrapers ──────────────────────────────────────────────────────────────
@@ -93,7 +95,7 @@ val appModule = module {
     single { PostRepository(get(), get(), get<CookiePreferences>(), get()) }
 
     // ── ViewModels ────────────────────────────────────────────────────────────
-    viewModel { HomeViewModel(get(), get(), get(), get()) }
+    viewModel { HomeViewModel(get(), get(), get(), get(), get()) }
     viewModel { PostDetailViewModel(get(), get<CookiePreferences>()) }
     viewModel { LoginWebViewViewModel(get<CookiePreferences>()) }
     viewModel { MessageViewModel(get()) }
@@ -104,8 +106,8 @@ val appModule = module {
     viewModel { (handle: SavedStateHandle) -> UserReplyListViewModel(get(), handle) }
     viewModel { (handle: SavedStateHandle) -> UserThreadListViewModel(get(), handle) }
     viewModel { UserWebViewViewModel(get<CookiePreferences>()) }
-    viewModel { SettingsViewModel(get<CookiePreferences>(), androidContext(), get()) }
-    viewModel { ScoreViewModel(get()) }
+    viewModel { SettingsViewModel(get<CookiePreferences>(), androidContext(), get(), get()) }
+    viewModel { ScoreViewModel(get(), get()) }
     viewModel { ScoreDetailViewModel(get()) }
     viewModel { ScoreItemViewModel(get(), get<CookiePreferences>()) }
     viewModel { ZoneDetailViewModel(get(), get<CookiePreferences>()) }

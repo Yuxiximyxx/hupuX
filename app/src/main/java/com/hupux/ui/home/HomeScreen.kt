@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -60,8 +59,7 @@ fun HomeScreen(
     vm: HomeViewModel = koinViewModel()
 ) {
     val state         by vm.state.collectAsState()
-    val followedCount by vm.followedCount.collectAsState()
-    val homeMatches   by vm.homeMatches.collectAsState()
+    val homeMatches   by vm.visibleHomeMatches.collectAsState()
 
     // 比分是会变的，但 HomeViewModel 只在冷启动时建一次，光靠 init 抓一次
     // 会让挂后台一整天回来还显示昨天的比分。这里在每次回到前台时补一刀，
@@ -78,16 +76,11 @@ fun HomeScreen(
 
     val recommendListState = rememberLazyListState()
     val hotListState       = rememberLazyListState()
-    val followedListState  = rememberLazyListState()
 
     // 当前 tab 对应的列表滚动到顶附近时才显示 header
     val headerVisible by remember {
         derivedStateOf {
-            val listState = when (state.selectedTab) {
-                0    -> recommendListState
-                1    -> hotListState
-                else -> followedListState
-            }
+            val listState = if (state.selectedTab == 0) recommendListState else hotListState
             listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 150
         }
     }
@@ -95,11 +88,8 @@ fun HomeScreen(
     // 触发器递增时滚到当前分页面顶部
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) {
-            when (state.selectedTab) {
-                0    -> recommendListState.animateScrollToItem(0)
-                1    -> hotListState.animateScrollToItem(0)
-                else -> followedListState.animateScrollToItem(0)
-            }
+            if (state.selectedTab == 0) recommendListState.animateScrollToItem(0)
+            else hotListState.animateScrollToItem(0)
         }
     }
 
@@ -152,7 +142,7 @@ fun HomeScreen(
                     }
 
                     // Plastic tabs
-                    PlasticTabRow(state.selectedTab, followedCount, vm::selectTab)
+                    PlasticTabRow(state.selectedTab, vm::selectTab)
                     Spacer(Modifier.height(12.dp))
                 }
             }
@@ -187,16 +177,6 @@ fun HomeScreen(
                     onRetry     = vm::loadHot,
                     onTopicClick = onTopicClick,
                     listState   = hotListState
-                )
-                else -> FollowedFeed(
-                    posts         = state.followedPosts,
-                    isLoading     = state.isLoadingFollow,
-                    isLoadingMore = state.isLoadingMoreFollow,
-                    hasMore       = state.followHasMore,
-                    onRefresh     = vm::loadFollowedFeed,
-                    onLoadMore    = vm::loadMoreFollowed,
-                    onPostClick   = onPostClick,
-                    listState     = followedListState
                 )
             }
         }
@@ -264,9 +244,8 @@ private fun NewsBanner(posts: List<Post>, onPostClick: (String) -> Unit) {
 // ─── Plastic tab row ──────────────────────────────────────────────────────────
 
 @Composable
-private fun PlasticTabRow(selectedIndex: Int, followedCount: Int, onSelect: (Int) -> Unit) {
-    val labels = listOf("推荐", "热榜",
-        if (followedCount > 0) "关注 ($followedCount)" else "关注")
+private fun PlasticTabRow(selectedIndex: Int, onSelect: (Int) -> Unit) {
+    val labels = listOf("推荐", "热榜")
     // 下划线式 Tab：不再用大面积色块胶囊，选中态靠红色文字 + 3dp 指示条
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -368,57 +347,6 @@ private fun HotItemCard(item: HotItem, onClick: () -> Unit) {
 private fun formatHeat(heat: Long): String = when {
     heat >= 10000 -> "${heat / 10000}.${(heat % 10000) / 1000}万"
     else          -> heat.toString()
-}
-
-// ─── Followed feed ────────────────────────────────────────────────────────────
-
-@Composable
-private fun FollowedFeed(
-    posts: List<Post>, isLoading: Boolean, isLoadingMore: Boolean, hasMore: Boolean,
-    onRefresh: () -> Unit, onLoadMore: () -> Unit, onPostClick: (String) -> Unit,
-    listState: LazyListState = rememberLazyListState()
-) {
-    when {
-        isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-            CircularProgressIndicator(color = HupuRed)
-        }
-        posts.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("📋", fontSize = 40.sp)
-                Spacer(Modifier.height(12.dp))
-                Text("还没有关注任何专区", color = TextSecondary, fontSize = 14.sp)
-                Spacer(Modifier.height(6.dp))
-                Text("去「发现」页关注感兴趣的专区", color = TextTertiary, fontSize = 12.sp)
-                Spacer(Modifier.height(20.dp))
-                PillButton("刷新", onClick = onRefresh)
-            }
-        }
-        else -> LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 8.dp + LocalBottomBarHeight.current)) {
-            item {
-                Row(Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("关注专区 · 最新动态", fontSize = 12.sp, color = TextTertiary,
-                        modifier = Modifier.weight(1f))
-                    TextButton(onClick = onRefresh, contentPadding = PaddingValues(0.dp)) {
-                        Text("刷新", fontSize = 12.sp, color = HupuRed)
-                    }
-                }
-            }
-            itemsIndexed(posts, key = { _, post -> post.tid }) { index, post ->
-                if (index == posts.size - 3 && hasMore)
-                    LaunchedEffect(posts.size) { onLoadMore() }
-                FollowedPostCard(post, onClick = { onPostClick(post.tid) })
-            }
-            if (isLoadingMore) {
-                item {
-                    Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(24.dp), color = HupuRed)
-                    }
-                }
-            }
-        }
-    }
 }
 
 // ─── Card components ──────────────────────────────────────────────────────────

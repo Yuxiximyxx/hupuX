@@ -14,6 +14,7 @@ import com.hupux.BuildConfig
 import com.hupux.data.GITHUB_RELEASES_URL
 import com.hupux.data.UpdateChecker
 import com.hupux.data.local.CookiePreferences
+import com.hupux.data.local.MatchTagPrefs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,7 +34,8 @@ data class UpdateUiState(
 class SettingsViewModel constructor(
     private val cookiePrefs: CookiePreferences,
     private val context: Context,
-    private val updateChecker: UpdateChecker
+    private val updateChecker: UpdateChecker,
+    val tagPrefs: MatchTagPrefs
 ) : ViewModel() {
 
     private val _updateState = MutableStateFlow(UpdateUiState())

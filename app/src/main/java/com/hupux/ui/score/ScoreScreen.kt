@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.hupux.data.model.MatchItem
-import com.hupux.data.scraper.MatchTag
 import com.hupux.ui.home.PillButton
 import com.hupux.ui.theme.*
 import org.koin.androidx.compose.koinViewModel
@@ -38,7 +37,15 @@ fun ScoreScreen(
     vm: ScoreViewModel = koinViewModel()
 ) {
     val state by vm.state.collectAsState()
+    val visibleTags by vm.visibleTags.collectAsState()
     val listState = rememberLazyListState()
+
+    // 设置里取消勾选当前分区时，自动切到第一个可见分区
+    LaunchedEffect(visibleTags) {
+        if (visibleTags.isNotEmpty() && state.tag !in visibleTags) {
+            vm.selectTag(visibleTags.first())
+        }
+    }
 
     // 赛程横跨整个赛季，第一场往往是几个月前的，所以默认停在「今天」而不是列表顶部。
     // 索引要和下面 LazyColumn 的排布对齐：每天 = 1 个日期标题 + N 张比赛卡。
@@ -75,7 +82,7 @@ fun ScoreScreen(
             ) {
                 Text("评分", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
             }
-            // 分区较多（12 个），Tab 行可横向滚动
+            // 分区 Tab 行可横向滚动；显示哪些分区由设置里的赛事选择决定
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -83,7 +90,7 @@ fun ScoreScreen(
                     .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.Start
             ) {
-                MatchTag.entries.forEach { tag ->
+                visibleTags.forEach { tag ->
                     val sel = state.tag == tag
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,

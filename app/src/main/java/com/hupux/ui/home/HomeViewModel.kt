@@ -8,7 +8,9 @@ import com.hupux.data.model.Post
 import com.hupux.data.repository.FollowedZonesRepository
 import com.hupux.data.repository.HomeRepository
 import com.hupux.data.repository.ZoneRepository
+import com.hupux.data.local.MatchTagPrefs
 import com.hupux.data.scraper.HupuMatchScraper
+import com.hupux.data.scraper.matchesLeague
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -46,7 +48,8 @@ class HomeViewModel constructor(
     private val homeRepo:     HomeRepository,
     private val zoneRepo:     ZoneRepository,
     private val followedRepo: FollowedZonesRepository,
-    private val matchScraper: HupuMatchScraper
+    private val matchScraper: HupuMatchScraper,
+    tagPrefs: MatchTagPrefs
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -60,6 +63,19 @@ class HomeViewModel constructor(
     /** 首页顶部「今日比分」横条。独立于 HomeUiState，避免 loadRecommend 整体重置时被清空。 */
     private val _homeMatches = MutableStateFlow<List<HomeMatch>>(emptyList())
     val homeMatches = _homeMatches.asStateFlow()
+
+    /**
+     * 按用户在设置里选的赛事过滤后的比分横条。
+     * 归一不到任何分区的未知赛事保留显示，不静默隐藏。
+     */
+    val visibleHomeMatches: StateFlow<List<HomeMatch>> =
+        combine(_homeMatches, tagPrefs.selectedTags) { matches, tags ->
+            matches.filter { m ->
+                val known = com.hupux.data.scraper.MatchTag.entries
+                    .any { it.matchesLeague(m.leagueType) }
+                !known || tags.any { it.matchesLeague(m.leagueType) }
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** 上次成功抓到比分的时刻，用来做节流 */
     private var lastMatchFetch = 0L
@@ -109,10 +125,7 @@ class HomeViewModel constructor(
 
     fun selectTab(index: Int) {
         _state.value = _state.value.copy(selectedTab = index)
-        when (index) {
-            1 -> if (_state.value.hotItems.isEmpty()) loadHot()
-            2 -> if (_state.value.followedPool.isEmpty()) loadFollowedFeed()
-        }
+        if (index == 1 && _state.value.hotItems.isEmpty()) loadHot()
     }
 
     fun loadHot() {

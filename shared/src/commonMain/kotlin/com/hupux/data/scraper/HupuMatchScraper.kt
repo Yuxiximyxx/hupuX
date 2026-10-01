@@ -76,6 +76,28 @@ enum class MatchTag(val businessId: String, val label: String) {
 }
 
 /**
+ * 首页「今日比分」横条的 leagueType 是自由文本（如 "NBA"、"欧国联第2轮"、"麒麟杯半决赛"），
+ * 用关键字归一到 12 个分区。匹配不到任何分区的视为未知赛事，过滤时保留（不静默隐藏）。
+ */
+fun MatchTag.matchesLeague(leagueType: String): Boolean {
+    val t = leagueType.lowercase()
+    return when (this) {
+        MatchTag.NBA       -> "nba" in t && "wnba" !in t
+        MatchTag.WNBA      -> "wnba" in t
+        MatchTag.CBA       -> "cba" in t && "cuba" !in t
+        MatchTag.CUBA      -> "cuba" in t
+        MatchTag.EPL       -> "英超" in leagueType
+        MatchTag.WORLD_CUP -> "世界杯" in leagueType
+        MatchTag.LOL       -> "英雄联盟" in leagueType || "lol" in t
+        MatchTag.LPL       -> "lpl" in t
+        MatchTag.LCK       -> "lck" in t
+        MatchTag.KOG       -> "王者荣耀" in leagueType || "kog" in t || "kpl" in t
+        MatchTag.PUBG      -> "绝地求生" in leagueType || "pubg" in t
+        MatchTag.TENNIS    -> "网球" in leagueType || "tennis" in t
+    }
+}
+
+/**
  * 赛程 + 评分。两个接口都**匿名可用**，不需要 Cookie：
  *
  * - 赛程：`match-api.hupu.com/.../getScheduleListByTagForH5`，一次返回约 200 场

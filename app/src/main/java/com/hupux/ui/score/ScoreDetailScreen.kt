@@ -138,6 +138,8 @@ private fun EsportScoreContent(
 ) {
     var selectedGame by remember(detail) { mutableIntStateOf(detail.games.size - 1) }
     val game = detail.games.getOrNull(selectedGame.coerceIn(detail.games.indices))
+    // 显示哪一方的队员：0=主队 1=客队；切单局时重置回主队
+    var selectedTeam by remember(game) { mutableIntStateOf(0) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -173,16 +175,16 @@ private fun EsportScoreContent(
             }
         }
 
-        // 选中单局的双方选手卡片
+        // 选中单局：双方战队切换，只显示选中战队的队员，点击切换
         if (game != null) {
-            item { TeamHeaderPill(game.home) }
-            items(game.home.players) { p ->
-                PlayerScoreCard(p) {
-                    if (p.bizNo.isNotEmpty()) onItemClick(p.bizType, p.bizNo)
-                }
+            item {
+                TeamSwitchRow(
+                    home = game.home, away = game.away,
+                    selected = selectedTeam, onSelect = { selectedTeam = it }
+                )
             }
-            item { TeamHeaderPill(game.away) }
-            items(game.away.players) { p ->
+            val team = if (selectedTeam == 0) game.home else game.away
+            items(team.players, key = { it.bizNo.ifEmpty { _ -> it.name } }) { p ->
                 PlayerScoreCard(p) {
                     if (p.bizNo.isNotEmpty()) onItemClick(p.bizType, p.bizNo)
                 }
@@ -343,28 +345,66 @@ private fun GameTabRow(
     }
 }
 
+/**
+ * 双方战队切换条：左右各一队，点中哪队就显示哪队的队员。
+ */
 @Composable
-private fun TeamHeaderPill(team: EsportTeamScore) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(10.dp),
-        color = CardBg,
-        shadowElevation = 1.dp
+private fun TeamSwitchRow(
+    home: EsportTeamScore,
+    away: EsportTeamScore,
+    selected: Int,
+    onSelect: (Int) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(CardBg)
     ) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (team.logo.isNotEmpty()) {
-                AsyncImage(
-                    model = team.logo, contentDescription = team.name,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(22.dp).clip(RoundedCornerShape(4.dp))
-                )
-                Spacer(Modifier.width(8.dp))
-            }
-            Text(team.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        TeamSwitchCell(
+            team = home, accent = Color(0xFFE23B3B),
+            selected = selected == 0, onClick = { onSelect(0) },
+            modifier = Modifier.weight(1f)
+        )
+        TeamSwitchCell(
+            team = away, accent = Color(0xFF6B9BFF),
+            selected = selected == 1, onClick = { onSelect(1) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun TeamSwitchCell(
+    team: EsportTeamScore,
+    accent: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) accent.copy(alpha = 0.16f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (team.logo.isNotEmpty()) {
+            AsyncImage(
+                model = team.logo, contentDescription = team.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(22.dp).clip(RoundedCornerShape(4.dp))
+            )
+            Spacer(Modifier.width(8.dp))
         }
+        Text(
+            team.name, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) TextPrimary else TextSecondary
+        )
     }
 }
 

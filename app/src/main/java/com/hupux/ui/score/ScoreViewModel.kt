@@ -7,9 +7,14 @@ import com.hupux.data.model.MatchSchedule
 import com.hupux.data.model.EsportMatchScore
 import com.hupux.data.model.MatchScoreBoard
 import com.hupux.data.scraper.HupuMatchScraper
+import com.hupux.data.local.MatchTagPrefs
 import com.hupux.data.scraper.MatchTag
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -23,11 +28,17 @@ data class ScoreUiState(
 )
 
 class ScoreViewModel constructor(
-    private val scraper: HupuMatchScraper
+    private val scraper: HupuMatchScraper,
+    tagPrefs: MatchTagPrefs
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ScoreUiState())
     val state = _state.asStateFlow()
+
+    /** 设置里勾选的赛事（顺序按 MatchTag 定义），tab 只显示这些 */
+    val visibleTags: StateFlow<List<MatchTag>> = tagPrefs.selectedTags
+        .map { tags -> MatchTag.entries.filter { it in tags } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MatchTag.entries.toList())
 
     /** 已加载过的分区缓存，切 tab 时不重复联网 */
     private val cache = mutableMapOf<MatchTag, MatchSchedule>()
